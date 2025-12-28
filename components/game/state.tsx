@@ -11,22 +11,18 @@ type SlotAny = { id: string; maxSeconds?: number } & Record<string, any>;
 type VariantAny = { id: string; slots: SlotAny[] };
 
 export type GameState = {
-  // identity
   sceneId: string;
   seasonId: string;
   runId: string;
 
-  // content
   scene: SceneAny;
   variant: VariantAny;
   order: SlotAny[];
   story: SlotAny[];
 
-  // progress
   index: number;
-  recordings: Record<string, string>; // slotId -> local uri
+  recordings: Record<string, string>;
 
-  // actions
   setSeasonId: (id: string) => void;
   setSceneId: (id: string) => Promise<void>;
   replaySameScene: () => Promise<void>;
@@ -35,7 +31,6 @@ export type GameState = {
   saveRecording: (slotId: string, uri: string) => Promise<void>;
   next: () => void;
 
-  // cleanup/safety
   cleanupRun: () => Promise<void>;
   saveLastRunBackup: () => Promise<void>;
 };
@@ -67,7 +62,6 @@ async function pickNextVariantIndex(sceneId: string, variantCount: number) {
 
   if (!Array.isArray(bag) || bag.length === 0) {
     bag = Array.from({ length: variantCount }, (_, i) => i);
-    // shuffle the bag
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
@@ -98,20 +92,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [index, setIndex] = useState(0);
   const [recordings, setRecordings] = useState<Record<string, string>>({});
 
-  const scene = useMemo(() => {
-    return SCENES.find((s) => s.id === sceneId)?.scene ?? SCENES[0]?.scene;
-  }, [sceneId]);
-
+  const scene = useMemo(() => SCENES.find((s) => s.id === sceneId)?.scene ?? SCENES[0]?.scene, [sceneId]);
   const variants = useMemo(() => normalizeVariants(scene), [scene]);
+  const variant = useMemo<VariantAny>(() => variants[variantIndex] ?? variants[0] ?? { id: "v1", slots: [] }, [variants, variantIndex]);
+  const story = useMemo(() => variant?.slots ?? [], [variant]);
 
-  const variant = useMemo<VariantAny>(() => {
-    return variants[variantIndex] ?? variants[0] ?? { id: "v1", slots: [] };
-  }, [variants, variantIndex]);
-
-  const story = useMemo(() => (variant?.slots ? variant.slots : []), [variant]);
-
-  // shuffled record order (changes when seed changes)
-  const order = useMemo(() => shuffle(variant?.slots ? variant.slots : []), [variant, seed]);
+  const order = useMemo(() => shuffle(variant?.slots ?? []), [variant, seed]);
 
   const DOC_DIR = FileSystem.documentDirectory; // string | null
   const CACHE_DIR = FileSystem.cacheDirectory; // string | null
@@ -172,9 +158,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setRecordings({});
   };
 
-    const saveRecording = async (slotId: string, uri: string) => {
-    // MVP: always keep original uri (works everywhere)
-    // Try copying only when it's a file:// uri and we have a temp dir
+  const saveRecording = async (slotId: string, uri: string) => {
+    // MVP-safe: keep URI always. Copy only if file:// and temp dir exists.
     if (!tempRunDir || !uri.startsWith("file://")) {
       setRecordings((r) => ({ ...r, [slotId]: uri }));
       return;
@@ -208,19 +193,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         await FileSystem.copyAsync({ from, to });
       }
 
-      const manifest = {
-        savedAt: Date.now(),
-        sceneId,
-        runId,
-        variantId: variant?.id ?? "v1",
-        slots: keys,
-      };
-
+      const manifest = { savedAt: Date.now(), sceneId, runId, variantId: variant?.id ?? "v1", slots: keys };
       await FileSystem.writeAsStringAsync(`${lastRunDir}manifest.json`, JSON.stringify(manifest, null, 2));
     } catch {}
   };
 
-  const next = () => setIndex((i) => i + 1);
+  const next = () => {
+    setIndex((i) => {
+      const max = order.length;
+      if (max === 0) return 0;
+      return Math.min(i + 1, max);
+    });
+  };
 
   const value: GameState = {
     sceneId,

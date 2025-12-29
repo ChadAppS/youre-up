@@ -126,7 +126,10 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
       clearTimeout(stopTimerRef.current);
       stopTimerRef.current = null;
     }
-    stopHudTimer();
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
   };
 
   const schedule = (msFromNow: number, fn: () => void) => {
@@ -248,6 +251,7 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
     const startRecording = async () => {
       if (cancelled) return;
       if (!camRef.current) return;
+      const cam: any = camRef.current;
 
       // ✅ EXACTLY when recording begins: hide overlay + clear ACTION
       setCountText(null);
@@ -262,7 +266,7 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
 
         if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
         stopTimerRef.current = setTimeout(() => {
-          camRef.current?.stopRecording?.();
+          cam.stopRecording?.();
         }, durationMs);
 
         const video = await camRef.current.recordAsync();
@@ -278,9 +282,9 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
 
         setIsRecording(false);
         stopHudTimer();
-        next();
 
         const nextIndex = index + 1;
+        next();
         if (nextIndex >= order.length) router.replace("/game/editing" as any);
         else router.replace("/game/prompt" as any);
       } catch {

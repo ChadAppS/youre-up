@@ -228,6 +228,7 @@ function AutoFitOutlinedText({
   outlineColor = "#0a1630",
   outlineWidth = 2,
   style,
+  onReady,
 }: {
   text: string;
   maxFontSize?: number;
@@ -236,11 +237,14 @@ function AutoFitOutlinedText({
   outlineColor?: string;
   outlineWidth?: number;
   style?: any;
+  onReady?: () => void;
 }) {
   const [fontSize, setFontSize] = useState(maxFontSize);
+  const readyRef = useRef(false);
 
   useEffect(() => {
     setFontSize(maxFontSize);
+    readyRef.current = false;
   }, [text, maxFontSize]);
 
   const lineHeight = Math.round(fontSize * 1.10);
@@ -275,6 +279,13 @@ function AutoFitOutlinedText({
 
     if ((tooManyLines || hasEllipsis) && fontSize > minFontSize) {
       setFontSize((s) => Math.max(minFontSize, s - 1));
+    return;
+    }
+
+    // ✅ stable now
+    if (!readyRef.current) {
+      readyRef.current = true;
+      onReady?.();
     }
   };
 
@@ -327,6 +338,8 @@ export default function PromptScreen() {
 
   const pageAnim = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
+  const [pageReady, setPageReady] = useState(false);
+  const pageOpacity = useRef(new Animated.Value(0)).current;
 
    const promptOut = useRef(new Animated.Value(0)).current; // 0 visible -> 1 hidden
 const setIn = useRef(new Animated.Value(0)).current;     // 0 hidden -> 1 visible
@@ -334,6 +347,23 @@ const lights = useRef(new Animated.Value(0)).current;    // 0 off -> 1 on
 const flash = useRef(new Animated.Value(0)).current;     // 0 -> 1 -> 0
   
 const navigatingRef = useRef(false);
+const slot = order?.[index];
+
+useEffect(() => {
+  if (!pageReady) return;
+
+  Animated.timing(pageOpacity, {
+    toValue: 1,
+    duration: 160,
+    easing: Easing.out(Easing.quad),
+    useNativeDriver: true,
+  }).start();
+}, [pageReady, pageOpacity]);
+
+useEffect(() => {
+  setPageReady(false);
+  pageOpacity.setValue(0);
+}, [slot?.id]);
 
 useEffect(() => {
   const loop = Animated.loop(
@@ -346,8 +376,6 @@ useEffect(() => {
   return () => loop.stop();
 }, [pulse]);
 
-
-  const slot = order?.[index];
   useEffect(() => {
   if (!slot) {
     router.replace("/game/final" as any);
@@ -374,8 +402,7 @@ const goToRecord = () => {
   setNavigating(true);
 
   pageAnim.stopAnimation(); // prevents stacking
-
-  Animated.timing(pageAnim, {
+   Animated.timing(pageAnim, {
     toValue: -1,
     duration: 280,
     easing: Easing.out(Easing.cubic),
@@ -385,11 +412,11 @@ const goToRecord = () => {
       router.push((`/game/record?slotId=${slot.id}` as any));
       pageAnim.setValue(0);
     }
-
     navigatingRef.current = false;
     setNavigating(false);
   });
-};
+}
+    
 
   return (
   <ImageBackground
@@ -400,20 +427,23 @@ const goToRecord = () => {
   >
     <View pointerEvents="none" style={styles.bgVignette} />
 
-    <Animated.View
-      style={{
-        flex: 1,
-    width: "100%",
-        transform: [
-          {
-            translateX: pageAnim.interpolate({
-              inputRange: [-1, 0],
-              outputRange: [-SCREEN_W, 0],
-            }),
-          },
-        ],
-      }}
-    >
+    
+  <Animated.View
+    style={{
+      flex: 1,
+      width: "100%",
+      opacity: pageOpacity,
+      transform: [
+        {
+          translateX: pageAnim.interpolate({
+            inputRange: [-1, 0],
+            outputRange: [-SCREEN_W, 0],
+          }),
+        },
+      ],
+    }}
+  >
+
       <ImageBackground
         source={require("../../assets/ui/prompt_skin.png")}
         resizeMode="contain"
@@ -425,7 +455,7 @@ const goToRecord = () => {
           {/* CTA */}
           <Animated.View style={[styles.ctaInkWrap, { transform: [{ scale: ctaScale }] }]}>
             <Pressable
-              disabled={showExit}
+              disabled={showExit || !pageReady}
               onPress={goToRecord}
               style={({ pressed }) => [styles.ctaInkBtn, pressed && styles.ctaInkPressed]}
             >
@@ -465,6 +495,7 @@ const goToRecord = () => {
                 outlineColor="#0a1630"
                 outlineWidth={2}
                 style={styles.scriptYellow}
+                onReady={() => setPageReady(true)}
               />
             </View>
           </View>
@@ -475,6 +506,7 @@ const goToRecord = () => {
         </View>
       </ImageBackground>
     </Animated.View>
+    
 
     {/* Exit is outside (fine) */}
     <Pressable style={[styles.exit, { top: insets.top + 12 }]} onPress={() => setShowExit(true)}>
@@ -501,7 +533,7 @@ const goToRecord = () => {
         onPress={() => {
           setShowExit(false);
           resetRunOnly?.();         // if you have it
-          router.replace("/" as any); // or wherever “home” is
+          router.replace("/home" as any); // or wherever “home” is
         }}
       >
         <Text style={modalStyles.btnDangerText}>Exit Scene</Text>

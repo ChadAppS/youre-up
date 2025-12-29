@@ -1,16 +1,16 @@
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useEventListener } from "expo";
 import { useVideoPlayer, VideoView } from "expo-video";
 
 import { useGame } from "@/components/game/state";
+import * as NavigationBar from "expo-navigation-bar";
+import { Platform } from "react-native";
 
 export default function FinalScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   const { recordings, story, replaySameScene, resetRunOnly, saveLastRunBackup, cleanupRun } = useGame();
 
@@ -24,6 +24,27 @@ export default function FinalScreen() {
 
   const uri = uris[i] ?? null;
   const backedUpRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    let active = true;
+
+    (async () => {
+      try {
+        // Hide the 3-button bar; allow swipe to reveal temporarily
+        await NavigationBar.setBehaviorAsync("overlay-swipe");
+        await NavigationBar.setVisibilityAsync("hidden");
+      } catch {}
+    })();
+
+    return () => {
+      active = false;
+      // Restore when leaving Final
+      NavigationBar.setVisibilityAsync("visible").catch(() => {});
+      NavigationBar.setBehaviorAsync("inset-swipe").catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     if (uris.length === 0) router.replace("/game");
@@ -65,7 +86,7 @@ export default function FinalScreen() {
     }
   });
 
-  if (!uri) return null;
+   if (!uri) return null;
 
   return (
     <View style={styles.root}>
@@ -77,38 +98,22 @@ export default function FinalScreen() {
         nativeControls={false}
       />
 
-      {/* X always exits */}
-      <Pressable
-        style={[styles.exit, { top: insets.top + 12 }]}
-        onPress={async () => {
-          await cleanupRun();
-          resetRunOnly();
-          router.replace("/game" as any);
-        }}
-      >
-        <Text style={styles.exitText}>✕</Text>
-      </Pressable>
-
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        
-        {done && (
+      {done && (
+        <View style={[styles.footer, { paddingBottom: 32 }]}>
           <Pressable
             style={styles.doneBtn}
             onPress={async () => {
               await cleanupRun();
-            setI(0);
-            setDone(false);
-            await replaySameScene();
-           await new Promise((r) => setTimeout(r, 50));
-           router.replace(`/game/prompt?run=${Date.now()}` as any);
-        }}
-
+              setI(0);
+              setDone(false);
+              await replaySameScene();
+              await new Promise((r) => setTimeout(r, 50));
+              router.replace(`/game/prompt?run=${Date.now()}` as any);
+            }}
           >
             <Text style={styles.doneText}>PLAY AGAIN</Text>
           </Pressable>
-        )}
 
-        {done && (
           <Pressable
             style={styles.leaveBtn}
             onPress={async () => {
@@ -119,27 +124,14 @@ export default function FinalScreen() {
           >
             <Text style={styles.leaveText}>LEAVE SET</Text>
           </Pressable>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-
-  exit: {
-    position: "absolute",
-    right: 18,
-    zIndex: 10,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  exitText: { color: "#fff", fontSize: 22, fontWeight: "900" },
 
   footer: {
     position: "absolute",

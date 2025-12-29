@@ -11,7 +11,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -52,8 +51,6 @@ export default function RecordScreen() {
   const [countText, setCountText] = useState<CountWord | null>(null);
   const [phase, setPhase] = useState<Phase>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
-
-  const [showExit, setShowExit] = useState(false);
 
   // Animations
   const borderPulse = useRef(new Animated.Value(0)).current;
@@ -447,47 +444,7 @@ Animated.spring(actionScale, {
         ]}
       />
 
-      {/* EXIT CONFIRM MODAL */}
-      <Modal
-        visible={showExit}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowExit(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Leave Set?</Text>
-            <Text style={styles.modalBody}>You will lose all progress.</Text>
-
-            <View style={styles.modalRow}>
-              <Pressable
-                style={styles.modalBtnGhost}
-                onPress={() => setShowExit(false)}
-              >
-                <Text style={styles.modalBtnGhostText}>CANCEL</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.modalBtn}
-                onPress={() => {
-                  startedRef.current = true;
-                  clearAllTimers();
-                  resetCountdownUI();
-                  camRef.current?.stopRecording?.();
-
-                  resetRunOnly();
-                  setShowExit(false);
-                  router.replace("/game" as any);
-                }}
-              >
-                <Text style={styles.modalBtnText}>EXIT</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* RECORDING BORDER (only while recording) */}
+     {/* RECORDING BORDER (only while recording) */}
       {isRecording && (
         <Animated.View
           pointerEvents="none"
@@ -504,15 +461,7 @@ Animated.spring(actionScale, {
         />
       )}
 
-      {/* Exit button */}
-      <Pressable
-        style={[styles.exit, { top: insets.top + 12 }]}
-        onPress={() => setShowExit(true)}
-      >
-        <Text style={styles.exitText}>✕</Text>
-      </Pressable>
-
-      
+            
       {showClapper && (
   <View pointerEvents="none" style={styles.clapperWrap}>
     <LottieView
@@ -642,19 +591,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
   camera: { flex: 1 },
 
-  exit: {
-    position: "absolute",
-    right: 18,
-    zIndex: 120,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  exitText: { color: "#fff", fontSize: 22, fontWeight: "900" },
-
   scrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.70)",
@@ -744,7 +680,7 @@ actionTextLights: {
     borderRadius: 3,
     padding: 2,
     position: "relative",
-    marginRight: 64,
+    marginRight: 15,
   },
   battCap: {
     position: "absolute",
@@ -778,6 +714,9 @@ actionTextLights: {
     textShadowRadius: 2,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }),
   },
+  timecodeTextWarn: {
+  color: "#ff3b30",
+},
   
   safeFrame: {
     position: "absolute",
@@ -819,45 +758,6 @@ actionTextLights: {
     borderRadius: 10,
   },
   btnText: { fontWeight: "900", color: "#000" },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 420,
-    backgroundColor: "#111",
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  modalTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
-  modalBody: { color: "#aaa", marginTop: 8, fontSize: 14, fontWeight: "700" },
-  modalRow: { flexDirection: "row", gap: 12, marginTop: 16 },
-  modalBtnGhost: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-  },
-  modalBtnGhostText: { color: "#fff", fontWeight: "900" },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    alignItems: "center",
-  },
-  modalBtnText: { color: "#000", fontWeight: "900" },
-  timecodeTextWarn: {
-  color: "#ff3b30",
-},
 
 recBottomWrap: {
   position: "absolute",

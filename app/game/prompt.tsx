@@ -1,9 +1,12 @@
 import type { LookDir } from "@/components/game/scene";
 import { useGame } from "@/components/game/state";
 import { useRouter } from "expo-router";
+import LottieView from "lottie-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, ImageBackground, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const lightupAnim = require("../../assets/lottie/lightupset.json");
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
@@ -70,7 +73,7 @@ scriptTextBlock: {
   charVal: { left: "34%", top: "30.3%", width: "42%", fontSize: 28 },
   typeVal: { left: "42%", top: "35.7%", width: "42%", fontSize: 28 },
   lenVal: { left: "44%", top: "41.2%", width: "42%", fontSize: 28 },
-  dirVal: { left: "46.5%", top: "47.1%", width: "42%", fontSize: 26 },
+  dirVal: { fontSize: 26 },
   scriptVal: { position: "absolute",
     top: "58%",
     left: "0%",
@@ -160,15 +163,82 @@ ctaInkPlate: {
 arrowLeft: { left: "6%" },
 arrowRight: { right: "6%" },
 arrowCenter: { left: "41%" }, // centered-ish in frame
-arrowGlyph: {
-fontSize: 40,
-  fontWeight: "700",
+
+arrowRow: {
+  position: "absolute",
+  left: "45.5%",
+  top: "47.1%",
+  width: "45%",
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+arrowGlyphInline: {
+  fontSize: 34,
+  fontWeight: "800",
   color: "#151664ff",
   textShadowColor: "#0a1630",
   textShadowOffset: { width: 1, height: 1 },
   textShadowRadius: 1,
-    // later swap for an image asset to match style
-}
+  marginRight: 10,
+},
+arrowGlyph: {
+  fontSize: 28,
+  fontWeight: "900",
+  color: "#151664ff",
+  includeFontPadding: false,
+  textShadowColor: "#0a1630",
+  textShadowOffset: { width: 1, height: 1 },
+  textShadowRadius: 1,
+  transform: [
+    { translateY: -7, },
+    { translateX: 11,}
+  ],
+  
+},
+dirRow: {
+  position: "absolute",
+  left: "37.1%",
+  top: "47.4%",
+  width: "54%",
+  height: 32,                 // give it a stable line box
+  flexDirection: "row",
+  alignItems: "center",
+},
+dirTextBox: {
+  width: "82%",          // fixed text column
+  height: "100%",
+  justifyContent: "center",
+},
+dirText: {
+  width: "100%",
+  textAlign: "center",
+  fontSize: 26,              // or keep using your dirVal fontSize
+  includeFontPadding: false,
+},
+dirArrowBox: {
+  width: "15%",              // reserved space so text never overlaps arrow
+  height: "100%",
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+arrowAbs: {
+  position: "absolute",
+  left: 10,                  // how far from pill left edge
+  top: "50%",
+  transform: [{ translateY: -19 }], // baseline-normalize (tune once)
+},
+arrowGlyphAbs: {
+  fontSize: 28,
+  fontWeight: "900",
+  color: "#151664ff",
+  includeFontPadding: false,
+  textShadowColor: "#0a1630",
+  textShadowOffset: { width: 1, height: 1 },
+  textShadowRadius: 1,
+},
 });
 
 const modalStyles = StyleSheet.create({
@@ -196,29 +266,6 @@ const modalStyles = StyleSheet.create({
   btnDanger: { backgroundColor: "rgba(255,80,80,0.90)" },
   btnDangerText: { color: "#0a1630", fontWeight: "900" },
 });
-
-const Arrow = ({ dir }: { dir?: LookDir }) => {
-  if (!dir || dir === "CAMERA") return null;
-
-  const glyph =
-    dir === "LEFT" ? "←" :
-    dir === "RIGHT" ? "→" :
-    dir === "DOWN_LEFT" ? "↙" :
-    dir === "DOWN_RIGHT" ? "↘" :
-    dir === "DOWN" ? "↓" :
-    "↑"; //UP default
-
-  const posStyle =
-    dir === "LEFT" ? styles.arrowLeft :
-    dir === "RIGHT" ? styles.arrowRight :
-    styles.arrowCenter;
-
-  return (
-    <View pointerEvents="none" style={[styles.arrowWrap, posStyle]}>
-      <Text style={styles.arrowGlyph}>{glyph}</Text>
-    </View>
-  );
-};
 
 function AutoFitOutlinedText({
   text,
@@ -267,8 +314,6 @@ function AutoFitOutlinedText({
     ellipsizeMode: "clip" as const, // we shrink until ellipsis disappears
   };
 
-  const SCREEN_W = Dimensions.get("window").width;
-
     const onLayoutMain = (e: any) => {
     const lines = e?.nativeEvent?.lines ?? [];
     const tooManyLines = lines.length > maxLines;
@@ -305,7 +350,34 @@ function AutoFitOutlinedText({
   );
 }
 
-const directionLabelFromArrow = (dir?: LookDir) => {
+const arrowGlyphFromDir = (dir: LookDir) =>
+  dir === "LEFT" ? "←" :
+  dir === "RIGHT" ? "→" :
+  dir === "DOWN_LEFT" ? "↙" :
+  dir === "DOWN_RIGHT" ? "↘" :
+  dir === "UP_LEFT" ? "↖" :
+  dir === "UP_RIGHT" ? "↗" :
+  dir === "DOWN" ? "↓" :
+  "↑";
+
+  const arrowNudgeStyle = (dir: LookDir) => {
+  // Default nudge
+  let x = 0;
+  let y = -1;
+
+  if (dir === "LEFT") { x = 1; y = -2; }
+  if (dir === "RIGHT") { x = 0; y = -1; }
+  if (dir === "UP") { x = 2; y = -2; }
+  if (dir === "DOWN") { x = 2; y = -1; }
+  if (dir === "UP_LEFT") { x = 1; y = -2; }
+  if (dir === "UP_RIGHT") { x = 0; y = -2; }
+  if (dir === "DOWN_LEFT") { x = 1; y = -1; }
+  if (dir === "DOWN_RIGHT") { x = 0; y = -1; }
+
+  return { transform: [{ translateX: x }, { translateY: y }] };
+};
+
+  const directionLabelFromArrow = (dir?: LookDir) => {
   switch (dir) {
     case "LEFT":
       return "LEFT";
@@ -325,21 +397,23 @@ const directionLabelFromArrow = (dir?: LookDir) => {
       return "UP-LEFT";
     case "CAMERA":
     default:
-      return "CAMERA"; // default label
+      return "CAMERA";
   }
 };
+
+
 
 export default function PromptScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { order, index, resetRunOnly } = useGame();
+  const { order, index, resetRunOnly, showBridge } = useGame();
   const [showExit, setShowExit] = useState(false);
   const [navigating, setNavigating] = useState(false);
 
-  const pageAnim = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const [pageReady, setPageReady] = useState(false);
   const pageOpacity = useRef(new Animated.Value(0)).current;
+
 
    const promptOut = useRef(new Animated.Value(0)).current; // 0 visible -> 1 hidden
 const setIn = useRef(new Animated.Value(0)).current;     // 0 hidden -> 1 visible
@@ -348,6 +422,38 @@ const flash = useRef(new Animated.Value(0)).current;     // 0 -> 1 -> 0
   
 const navigatingRef = useRef(false);
 const slot = order?.[index];
+
+const [transitioning, setTransitioning] = useState(false);
+
+const [playLightup, setPlayLightup] = useState(false);
+const lightupRef = useRef<LottieView>(null);
+
+const mountedRef = useRef(true);
+const whiteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+useEffect(() => {
+  return () => {
+    if (whiteTimerRef.current) {
+      clearTimeout(whiteTimerRef.current);
+      whiteTimerRef.current = null;
+    }
+    transIn.stopAnimation();
+    transGlow.stopAnimation();
+    slideX.stopAnimation();
+  };
+}, []);
+
+useEffect(() => {
+  mountedRef.current = true;
+  return () => {
+    mountedRef.current = false;
+  };
+}, []);
+
+
+// overlay: 0 hidden -> 1 shown
+const transIn = useRef(new Animated.Value(0)).current;
+// lights glow: 0 off -> 1 on
+const transGlow = useRef(new Animated.Value(0)).current;
 
 useEffect(() => {
   if (!pageReady) return;
@@ -361,9 +467,23 @@ useEffect(() => {
 }, [pageReady, pageOpacity]);
 
 useEffect(() => {
+  showBridge("#fff");
+}, [showBridge]);
+
+useEffect(() => {
   setPageReady(false);
   pageOpacity.setValue(0);
 }, [slot?.id]);
+
+useEffect(() => {
+  if (!playLightup) return;
+
+  // Wait 1 frame so the LottieView is mounted before playing
+  requestAnimationFrame(() => {
+    // 30 frames @ 30fps = frames 0..29
+    lightupRef.current?.play?.(0, 29);
+  });
+}, [playLightup]);
 
 useEffect(() => {
   const loop = Animated.loop(
@@ -382,6 +502,9 @@ useEffect(() => {
     }
 }, [slot, router]);
 
+const SCREEN_W = Dimensions.get("window").width;
+const slideX = useRef(new Animated.Value(0)).current;
+
 if (!slot) return null; // or show a loader, or navigate away
 
 const ctaScale = pulse.interpolate({
@@ -392,31 +515,65 @@ const ctaScale = pulse.interpolate({
 const dirArrow = (slot.directionArrow ?? "CAMERA") as LookDir;
 const dirText = slot.directionText ?? directionLabelFromArrow(dirArrow);
 
-const SCREEN_W = Dimensions.get("window").width;
-
 const safeIndex = Math.min(index, Math.max(0, (order?.length ?? 0) - 1));
 
 const goToRecord = () => {
-  if (navigatingRef.current) return;
-  navigatingRef.current = true;
-  setNavigating(true);
+  if (transitioning || navigatingRef.current || !slot) return;
 
-  pageAnim.stopAnimation(); // prevents stacking
-   Animated.timing(pageAnim, {
-    toValue: -1,
-    duration: 280,
+  navigatingRef.current = true;
+  setTransitioning(true);
+
+  // reset overlay anims
+  transIn.stopAnimation();
+  transGlow.stopAnimation();
+  transIn.setValue(0);
+  transGlow.setValue(0);
+
+  setPlayLightup(false);
+
+  slideX.stopAnimation();
+  slideX.setValue(0);
+
+  // 1) Prompt UI slides left
+  Animated.timing(slideX, {
+    toValue: -SCREEN_W,
+    duration: 260,
+    easing: Easing.out(Easing.cubic),
+    useNativeDriver: true,
+  }).start();
+
+  // 2) Overlay comes in from right
+  Animated.timing(transIn, {
+    toValue: 1,
+    duration: 260,
     easing: Easing.out(Easing.cubic),
     useNativeDriver: true,
   }).start(({ finished }) => {
-    if (finished) {
-      router.push((`/game/record?slotId=${slot.id}` as any));
-      pageAnim.setValue(0);
-    }
-    navigatingRef.current = false;
-    setNavigating(false);
+    if (!finished) return;
+
+    // 3) Play lights-on animation
+    setPlayLightup(true);
+
+    // 4) After ~1s → white
+    whiteTimerRef.current = setTimeout(() => {
+      Animated.timing(transGlow, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(({ finished: f2 }) => {
+        if (!f2) return;
+
+        // ⏳ Guarantee white is fully painted before route swap
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            router.replace(`/game/record?slotId=${slot.id}&fromWhite=1`);
+          });
+        });
+      });
+    }, 1100);
   });
-}
-    
+};
 
   return (
   <ImageBackground
@@ -426,44 +583,40 @@ const goToRecord = () => {
     imageStyle={styles.bgImage}
   >
     <View pointerEvents="none" style={styles.bgVignette} />
-
-    
-  <Animated.View
-    style={{
-      flex: 1,
-      width: "100%",
-      opacity: pageOpacity,
-      transform: [
-        {
-          translateX: pageAnim.interpolate({
-            inputRange: [-1, 0],
-            outputRange: [-SCREEN_W, 0],
-          }),
-        },
-      ],
-    }}
+ 
+   
+{/* 2) Prompt UI slides left (ONLY this moves) */}
+<Animated.View
+  style={{
+    flex: 1,
+    width: "100%",
+    opacity: pageOpacity,
+    transform: [{ translateX: slideX }],
+  }}
+>
+  <ImageBackground
+    source={require("../../assets/ui/prompt_skin.png")}
+    resizeMode="contain"
+    style={styles.skin}
   >
-
-      <ImageBackground
-        source={require("../../assets/ui/prompt_skin.png")}
-        resizeMode="contain"
-        style={styles.skin}
-      >
+        
         {/* EVERYTHING that uses % positions MUST be inside this frame */}
         <View style={styles.frame}>
           
           {/* CTA */}
           <Animated.View style={[styles.ctaInkWrap, { transform: [{ scale: ctaScale }] }]}>
             <Pressable
-              disabled={showExit || !pageReady}
+              disabled={showExit || transitioning || !pageReady}
               onPress={goToRecord}
               style={({ pressed }) => [styles.ctaInkBtn, pressed && styles.ctaInkPressed]}
             >
+             
               <View style={styles.ctaInkPlate}>
                 <Text style={styles.ctaInkText}>HEAD TO SET</Text>
               </View>
             </Pressable>
           </Animated.View>
+
 
           {/* Scene / Take values */}
           <Text style={[styles.blueValue, styles.sceneVal]}>{(slot as any).sceneNumber ?? "—"}</Text>
@@ -473,16 +626,24 @@ const goToRecord = () => {
           <Text style={[styles.bluePillText, styles.charVal]}>{(slot as any).character ?? "You"}</Text>
           <Text style={[styles.bluePillText, styles.typeVal]}>{slot.type.replace("_", " ")}</Text>
           <Text style={[styles.bluePillText, styles.lenVal]}>{`${slot.maxSeconds} SECONDS`}</Text>
+<View style={styles.dirRow}>
+  <View style={styles.dirArrowBox}>
+    {dirArrow !== "CAMERA" ? (
+      <Text style={styles.arrowGlyph}>{arrowGlyphFromDir(dirArrow)}</Text>
+    ) : null}
+  </View>
 
-<Text numberOfLines={1}
-  adjustsFontSizeToFit
-  minimumFontScale={0.7}
-  style={[styles.bluePillText, styles.dirVal]}
->
-  {dirText}
-</Text>
-          {/* Look arrow (prompt screen only) */}
-          <Arrow dir={dirArrow} />
+  <View style={styles.dirTextBox}>
+    <Text
+      numberOfLines={1}
+      allowFontScaling={false}
+      ellipsizeMode="clip"
+      style={[styles.bluePillText, styles.dirText]}
+    >
+      {dirText}
+    </Text>
+  </View>
+</View>
 
           {/* Script */}
           <View style={[styles.scriptVal, styles.scriptBoxHit]}>
@@ -507,11 +668,19 @@ const goToRecord = () => {
       </ImageBackground>
     </Animated.View>
     
-
     {/* Exit is outside (fine) */}
-    <Pressable style={[styles.exit, { top: insets.top + 12 }]} onPress={() => setShowExit(true)}>
-      <Text style={styles.exitText}>✕</Text>
-    </Pressable>
+<Pressable
+  disabled={transitioning}
+  onPress={() => setShowExit(true)}
+  style={[
+    styles.exit,
+    { top: insets.top + 12 },
+    transitioning && { opacity: 0.35 },
+  ]}
+>
+  <Text style={styles.exitText}>✕</Text>
+</Pressable>
+
 
     {/* Modal */}
     <Modal visible={showExit} transparent animationType="fade" onRequestClose={() => setShowExit(false)}>
@@ -541,6 +710,60 @@ const goToRecord = () => {
     </View>
   </View>
 </Modal>
+{/* ================= TRANSITION OVERLAY ================= */}
+<Animated.View
+  pointerEvents={transitioning ? "auto" : "none"}
+  style={[
+    StyleSheet.absoluteFillObject,
+    {
+      zIndex: 9999,
+      opacity: transIn,
+      transform: [
+        {
+          translateX: transIn.interpolate({
+            inputRange: [0, 1],
+            outputRange: [SCREEN_W, 0], // comes from right
+          }),
+        },
+      ],
+    },
+  ]}
+>
+  {/* Base frame: lights off */}
+  <ImageBackground
+    source={require("../../assets/images/movieset_lightsoff.png")}
+    resizeMode="cover"
+    style={StyleSheet.absoluteFillObject}
+  />
+
+  {/* Lights turning on (Lottie) */}
+ {playLightup && (
+    <LottieView
+      ref={lightupRef}
+      source={lightupAnim}
+      autoPlay={false}
+      loop={false}
+      resizeMode="cover"
+      style={StyleSheet.absoluteFillObject}
+    />
+  )}
+
+  {/* White cover (hides route change) */}
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      StyleSheet.absoluteFillObject,
+      {
+        backgroundColor: "#fff",
+        opacity: transGlow.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+        }),
+      },
+    ]}
+  />
+</Animated.View>
+{/* ================= END TRANSITION OVERLAY ================= */}
   </ImageBackground>
-);
+  );
 }

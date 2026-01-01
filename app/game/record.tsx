@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -18,17 +19,62 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import clapperAnim from "../../assets/clapper.json";
+import clapperAnim from "../../assets/lottie/clapper.json";
+
 
 type CountWord = "LIGHTS" | "CAMERA" | "ACTION";
 type Phase = CountWord | null;
 
 const ACTION_BLUE = "#4DA3FF"; // soft electric blue
+const PROMPT_H = 110;       // fixed prompt box height (tweak if you want)
+const NAV_PAD = 0;        // gap above system nav/home indicator
+const PROMPT_GAP = 3;   // little breathing room above icons
+const REC_GAP = 14;        // gap between REC and prompt
+
+function AutoFitPromptText({ text }: { text: string }) {
+  const [fontSize, setFontSize] = useState(26);
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    setFontSize(26);
+    readyRef.current = false;
+  }, [text]);
+
+  return (
+    <Text
+      style={{
+        color: "rgba(255,255,255,1)",
+        fontWeight: "900",
+        textAlign: "center",
+        fontSize,
+        lineHeight: Math.round(fontSize * 1.15),
+      }}
+      numberOfLines={3}
+      ellipsizeMode="clip"
+      onTextLayout={(e) => {
+        if (readyRef.current) return;
+        const lines = e?.nativeEvent?.lines ?? [];
+        const last = lines[2]?.text ?? "";
+        const hasEllipsis = last.endsWith("…") || last.endsWith("...");
+
+        if ((lines.length > 3 || hasEllipsis) && fontSize > 14) {
+          setFontSize((s) => s - 1);
+          return;
+        }
+
+        readyRef.current = true;
+      }}
+    >
+      {text}
+    </Text>
+  );
+}
 
 export default function RecordScreen() {
   const router = useRouter();
-  const { slotId } = useLocalSearchParams<{ slotId: string }>();
-  const { order, index, saveRecording, next, resetRunOnly } = useGame();
+  const { slotId, fromWhite } = useLocalSearchParams<{ slotId: string; fromWhite?: string }>();
+  const cameFromWhite = fromWhite === "1";
+  const { order, index, saveRecording, next, resetRunOnly, hideBridge } = useGame();
 
   const slot = useMemo(() => {
     return order.find((s) => s.id === slotId) ?? order[index];
@@ -40,6 +86,7 @@ export default function RecordScreen() {
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startedRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hudVisible, setHudVisible] = useState(true);
 
   const [permission, requestPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -76,6 +123,7 @@ export default function RecordScreen() {
   const fakeShutter = "180°";
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
+  const silhouette = require("../../assets/ui/Silhouette.png");
 
   const msToMSF = (ms: number, fps: number) => {
   const clamped = Math.max(0, ms);
@@ -89,9 +137,12 @@ return `${pad2(minutes)}:${pad2(seconds)}:${pad2(frames)}`;
 const SAFE_TOP = 70;       // must match styles.safeFrame.top
 const HEADROOM_Y = 110;    // must match styles.headroomLine.top
 const TIME_BOX_H = 34;     // approx height of the timecode pill/text
-const TIME_NUDGE = -0;
+const TIME_NUDGE = 0;
 
 const actionScale = useRef(new Animated.Value(0.92)).current;
+const entryWhite = useRef(new Animated.Value(cameFromWhite ? 1 : 0)).current; // start fully white
+const [entryDone, setEntryDone] = useState(false);  // gate countdown until fade completes
+const entryFinishedRef = useRef(false);
 
   const startHudTimer = () => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -177,10 +228,25 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
 
   // reset for each new slot
   useEffect(() => {
-    startedRef.current = false;
+    entryFinishedRef.current = false;
     clearAllTimers();
     resetCountdownUI();
-  }, [slotId]);
+    setRemainingMs(durationMs);
+    // hard reset visual overlay state
+  setOverlayVisible(false);
+  setCountText(null);
+  setPhase(null);
+    setShowClapper(false);
+     setEntryDone(false);
+  entryWhite.stopAnimation();
+  entryWhite.setValue(cameFromWhite ? 1 : 0);
+
+  // keep flash off by default; it’s only used by your LIGHTS flash
+  flashOpacity.stopAnimation();
+  flashOpacity.setValue(0);
+
+  setIsReady(false);
+  }, [slotId, cameFromWhite]);
 
   //Animated RED Dot
   useEffect(() => {
@@ -236,163 +302,169 @@ const actionScale = useRef(new Animated.Value(0.92)).current;
 
   // Main countdown + record timeline (single source of truth)
   useEffect(() => {
-    const canRun =
-      !!slot && isReady && permission?.granted && micPermission?.granted;
-    if (!canRun) return;
+  const canRun =
+    !!slot &&
+    isReady &&
+    entryDone &&
+    permission?.granted &&
+    micPermission?.granted;
 
-    if (startedRef.current) return;
-    startedRef.current = true;
+  if (!canRun) return;
+  if (startedRef.current) return;
+  startedRef.current = true;
+  setOverlayVisible(true);
 
-    let cancelled = false;
+  let cancelled = false;
 
-    const startRecording = async () => {
-      if (cancelled) return;
-      if (!camRef.current) return;
-      const cam: any = camRef.current;
+  // ✅ DEFINE THIS FIRST (before any schedule() calls use it)
+  const startRecording = async () => {
+    if (cancelled) return;
+    if (!camRef.current) return;
+    const cam: any = camRef.current;
 
-      // ✅ EXACTLY when recording begins: hide overlay + clear ACTION
-      setCountText(null);
-      setPhase(null);
-      setOverlayVisible(false);
-      cueOpacity.stopAnimation();
-      cueOpacity.setValue(0);
+    setCountText(null);
+    setPhase(null);
+    setOverlayVisible(false);
+    cueOpacity.stopAnimation();
+    cueOpacity.setValue(0);
 
-      try {
-        setIsRecording(true);
-        startHudTimer();
+    try {
+      setIsRecording(true);
+      startHudTimer();
 
-        if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
-        stopTimerRef.current = setTimeout(() => {
-          cam.stopRecording?.();
-        }, durationMs);
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = setTimeout(() => {
+        cam.stopRecording?.();
+      }, durationMs);
 
-        const video = await camRef.current.recordAsync();
+      const video = await camRef.current.recordAsync();
 
-        if (stopTimerRef.current) {
-          clearTimeout(stopTimerRef.current);
-          stopTimerRef.current = null;
-        }
-
-        if (video?.uri && slot) {
-          await saveRecording(slot.id, video.uri);
-        }
-
-        setIsRecording(false);
-        stopHudTimer();
-
-        const nextIndex = index + 1;
-        next();
-        if (nextIndex >= order.length) router.replace("/game/editing" as any);
-        else router.replace("/game/prompt" as any);
-      } catch {
-        setIsRecording(false);
-        stopHudTimer();
-        router.replace("/game/prompt" as any);
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
       }
-    };
 
-    // ---- Timeline (ms) ----
-    setOverlayVisible(true);
+      if (video?.uri && slot) {
+        await saveRecording(slot.id, video.uri);
+      }
 
-    // LIGHTS
-    schedule(0, () => {
-      if (cancelled) return;
+      setIsRecording(false);
+      stopHudTimer();
 
-      setPhase("LIGHTS");
-      setLightsTextMode(true);
+      const nextIndex = index + 1;
+      next();
+      if (nextIndex >= order.length) router.replace("/game/editing" as any);
+      else router.replace("/game/prompt" as any);
+    } catch {
+      setIsRecording(false);
+      stopHudTimer();
+      router.replace("/game/prompt" as any);
+    }
+  };
 
-      flashOpacity.stopAnimation();
-      flashOpacity.setValue(1);
-      Animated.sequence([
-        Animated.delay(900),
-        Animated.timing(flashOpacity, {
-          toValue: 0,
-          duration: 650,
-          useNativeDriver: true,
-        }),
-      ]).start();
+  // ---- Normal timeline ----
+setOverlayVisible(true);
 
-      showWord("LIGHTS", 220);
-     
-    });
+// LIGHTS (flash + text)
+schedule(0, () => {
+  if (cancelled) return;
 
-    // fade LIGHTS out
-    schedule(900, () => {
-      if (cancelled) return;
-      fadeWordOut(420);
-    });
+  setPhase("LIGHTS");
+  setLightsTextMode(true);
+  showWord("LIGHTS", 220);
 
-    // clear LIGHTS word after fade finishes
+  // Whole screen fades from white → transparent ONLY when coming from prompt bridge
+  if (cameFromWhite) {
+    entryWhite.stopAnimation();
+    entryWhite.setValue(1);
+    Animated.timing(entryWhite, {
+      toValue: 0,
+      duration: 850,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }
+});
+
+// fade LIGHTS out
+schedule(900, () => {
+  if (cancelled) return;
+  fadeWordOut(420);
+});
+
+// clear LIGHTS word after fade
 schedule(1400, () => {
   if (cancelled) return;
   setCountText(null);
 });
 
-    // beat after LIGHTS: remove word only
-    schedule(1650, () => {
-      if (cancelled) return;
-      setShowClapper(true);
-    });
+// CAMERA + clapper
+schedule(1600, () => {
+  if (cancelled) return;
+  setLightsTextMode(false);
+  setPhase("CAMERA");
+  showWord("CAMERA", 180);
+});
 
-    // CAMERA
-    schedule(1600, () => {
-      if (cancelled) return;
-      setLightsTextMode(false);
-      setPhase("CAMERA");
-      showWord("CAMERA", 180);
-    });
+schedule(1650, () => {
+  if (cancelled) return;
+  setShowClapper(true);
+});
 
-    // fade CAMERA out
-    schedule(3050, () => {
-      if (cancelled) return;
-      fadeWordOut(260);
-    });
+// fade CAMERA out
+schedule(3050, () => {
+  if (cancelled) return;
+  fadeWordOut(260);
+});
 
-    // small beat before ACTION
-    schedule(3300, () => {
-      if (cancelled) return;
-      setCountText(null);
-    });
+// clear CAMERA
+schedule(3300, () => {
+  if (cancelled) return;
+  setCountText(null);
+});
 
-    // ACTION pops
-    schedule(4600, () => {
-      if (cancelled) return;
-      setPhase("ACTION");
-      showWord("ACTION", 180);
-actionScale.setValue(0.92);
-Animated.spring(actionScale, {
-  toValue: 1,
-  friction: 4,
-  tension: 120,
-  useNativeDriver: true,
-}).start();
-    });
+// ACTION pop
+schedule(4600, () => {
+  if (cancelled) return;
+ 
+  setPhase("ACTION");
+  showWord("ACTION", 180);
 
-    // start recording
-    schedule(5600, () => {
-      if (cancelled) return;
-      startRecording();
-    });
+  actionScale.setValue(0.92);
+  Animated.spring(actionScale, {
+    toValue: 1,
+    friction: 4,
+    tension: 120,
+    useNativeDriver: true,
+  }).start();
+});
 
-    return () => {
-      cancelled = true;
-      clearAllTimers();
-    };
-  }, [
-    slot,
-    slotId,
-    isReady,
-    permission?.granted,
-    micPermission?.granted,
-    order.length,
-    index,
-    next,
-    router,
-    saveRecording,
-    flashOpacity,
-    cueOpacity,
-    durationMs,
-  ]);
+// start recording
+schedule(5600, () => {
+  if (cancelled) return;
+  startRecording();
+});
+
+  return () => {
+    cancelled = true;
+    clearAllTimers();
+  };
+}, [
+  slot,
+  slotId,
+  isReady,
+  entryDone,
+  permission?.granted,
+  micPermission?.granted,
+  order.length,
+  index,
+  next,
+  router,
+  saveRecording,
+  flashOpacity,
+  cueOpacity,
+  durationMs,
+]);
 
   if (!permission?.granted) {
     return (
@@ -417,32 +489,70 @@ Animated.spring(actionScale, {
   }
 
   return (
-    <View
-      style={[
-        styles.root,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={styles.root}>
       <CameraView
-        ref={camRef}
-        style={styles.camera}
-        facing="front"
-        mode="video"
-        onCameraReady={() => setIsReady(true)}
-      />
+  ref={camRef}
+  style={styles.camera}
+  facing="front"
+  mode="video"
+  onCameraReady={() => {
+    setIsReady(true);
 
-      {/* WHITE FLASH (LIGHTS) - above scrim */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: "#fff",
-            opacity: flashOpacity,
-            zIndex: 70,
-          },
-        ]}
-      />
+    // Start white ONLY when coming from the prompt white bridge
+    if (cameFromWhite) {
+      entryWhite.stopAnimation();
+      entryWhite.setValue(1);
+    } else {
+      entryWhite.stopAnimation();
+      entryWhite.setValue(0);
+    }
+
+    // Let the countdown timeline run
+    entryFinishedRef.current = true;
+    setEntryDone(true);
+
+    // If you have hideBridge in state, this is safe:
+    hideBridge?.();
+  }}
+/>
+
+<View
+  pointerEvents="none" style={styles.silhouetteWrap}>
+  <Image source={silhouette} style={styles.silhouette} />
+</View>
+
+{/* ENTRY WHITE COVER */}
+<Animated.View
+  pointerEvents="none"
+  style={[
+    StyleSheet.absoluteFillObject,
+    {
+      backgroundColor: "#fff",
+      opacity: entryWhite,
+      zIndex: 1000,
+      elevation: 1000,
+    },
+  ]}
+/>
+
+{/* LIGHTS TEXT ABOVE WHITE (fades with it) */}
+{phase === "LIGHTS" && (
+  <Animated.View
+    pointerEvents="none"
+    style={[
+      StyleSheet.absoluteFillObject,
+      {
+        opacity: entryWhite,
+        zIndex: 1001,
+        elevation: 1001,
+        justifyContent: "center",
+        alignItems: "center",
+      },
+    ]}
+  >
+    <Text style={styles.lightsOnWhiteText}>LIGHTS</Text>
+  </Animated.View>
+)}
 
      {/* RECORDING BORDER (only while recording) */}
       {isRecording && (
@@ -485,38 +595,34 @@ Animated.spring(actionScale, {
 {overlayVisible && countText && (
   countText === "ACTION" ? (
     <View pointerEvents="none" style={styles.action3DWrap}>
-      <Text
-        style={[
-          styles.action3DShadow,
-          { transform: [{ translateX: 4 }, { translateY: 4 }] },
-        ]}
-      >
+      <Text style={[styles.action3DShadow, { transform: [{ translateX: 4 }, { translateY: 4 }] }]}>
         ACTION
       </Text>
-      <Text
-        style={[
-          styles.action3DShadow,
-          { transform: [{ translateX: 2 }, { translateY: 2 }] },
-        ]}
-      >
+      <Text style={[styles.action3DShadow, { transform: [{ translateX: 2 }, { translateY: 2 }] }]}>
         ACTION
       </Text>
-      <Animated.Text
-        style={[
-          styles.action3DFront,
-          { opacity: cueOpacity, transform: [{ scale: actionScale }] },
-        ]}
-      >
+      <Animated.Text style={[styles.action3DFront, { opacity: cueOpacity, transform: [{ scale: actionScale }] }]}>
         ACTION
       </Animated.Text>
     </View>
+  ) : countText === "LIGHTS" ? (
+    cameFromWhite ? null : (
+    <Animated.View
+    pointerEvents="none"
+    style={[styles.lightsGlowWrap, { opacity: cueOpacity }]}
+  >
+    <Text style={styles.lightsGlowOuter}>LIGHTS</Text>
+    <Text style={styles.lightsGlowInner}>LIGHTS</Text>
+    <Text style={styles.lightsGlowFront}>LIGHTS</Text>
+  </Animated.View>
+    )
   ) : (
     <Animated.Text
       pointerEvents="none"
       style={[
         styles.countText,
         { opacity: cueOpacity },
-        lightsTextMode ? styles.actionTextLights : styles.actionTextCam,
+        styles.actionTextCam, // CAMERA stays white
       ]}
     >
       {countText}
@@ -524,9 +630,10 @@ Animated.spring(actionScale, {
   )
 )}
 
+
       {/* FILM HUD + GUIDES (always on, visual only) */}
       <View pointerEvents="none" style={styles.hudWrap}>
-        <View style={[styles.hudTop, { paddingTop: insets.top + 10 }]}>
+        <View style={[styles.hudTop, { top: insets.top + 10 }]}>
           <View style={styles.hudLeft}>
             
             <Text style={[styles.hudMono, styles.hudDim]}>
@@ -542,7 +649,20 @@ Animated.spring(actionScale, {
           </View>
         </View>
 
-{isRecording && (
+         {/* PROMPT (fixed box, pinned above system bottom area) */}
+<View
+  pointerEvents="none"
+  style={[
+    styles.promptWrap,
+    { bottom: insets.bottom + NAV_PAD + PROMPT_GAP },
+  ]}
+>
+  <View style={styles.promptBox}>
+    <AutoFitPromptText text={slot?.prompt ?? ""} />
+  </View>
+</View>
+
+{hudVisible && (
   <View
     style={[
       styles.timecodeWrap,
@@ -566,10 +686,33 @@ Animated.spring(actionScale, {
   </View>
 )}
 
-        <View style={styles.safeFrame} />
+<View
+  style={[
+    styles.safeFrame,
+    {
+      bottom:
+        (insets.bottom + NAV_PAD + PROMPT_GAP) +
+        PROMPT_H +
+        REC_GAP -
+        10,
+    },
+  ]}
+/>
         <View style={styles.headroomLine} />
 
-        <View style={styles.recBottomWrap}>
+<View
+  style={[
+    styles.recBottomWrap,
+    {
+      bottom:
+        insets.bottom +
+        NAV_PAD +
+        PROMPT_GAP +
+        PROMPT_H +
+        REC_GAP,
+    },
+  ]}
+>
   <View style={[styles.recPill, isRecording && styles.recPillOn]}>
 <Animated.View
   style={[
@@ -589,7 +732,7 @@ Animated.spring(actionScale, {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-  camera: { flex: 1 },
+  camera: { ...StyleSheet.absoluteFillObject },
 
   scrim: {
     ...StyleSheet.absoluteFillObject,
@@ -632,11 +775,12 @@ actionTextLights: {
   // HUD
   hudWrap: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 55,
-    opacity: 0.6,
+    zIndex: 90,
+    opacity: 0.7,
   },
   hudTop: {
     position: "absolute",
+    top: 0,
     left: 12,
     right: 12,
     flexDirection: "row",
@@ -647,7 +791,7 @@ actionTextLights: {
   hudRight: { alignItems: "flex-end" },
   hudMono: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }),
   },
@@ -656,18 +800,18 @@ actionTextLights: {
   recPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
     borderRadius: 999,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.65)",
   },
   recPillOn: { borderColor: "rgba(255,255,255,0.9)" },
   recDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: "rgba(255,255,255,0.6)",
   },
   recDotOn: { backgroundColor: "#ff3b30" },
@@ -706,7 +850,7 @@ actionTextLights: {
 
   timecodeText: {
     color: "#fff",
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "900",
     letterSpacing: 0.8,
     textShadowColor: "rgba(0,0,0,0.75)",  // adds perceived boldness
@@ -723,7 +867,6 @@ actionTextLights: {
     left: 12,
     right: 12,
     top: 70,
-    bottom: 70,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.75)",
     borderRadius: 10,
@@ -763,7 +906,6 @@ recBottomWrap: {
   position: "absolute",
   left: 0,
   right: 0,
-  bottom: 74,        // just under safeFrame bottom (safeFrame bottom=130)
   alignItems: "center",
 },
 clapperWrap: {
@@ -842,6 +984,56 @@ lightsGlowInner: {
 },
 
 lightsGlowFront: {
+  fontSize: 72,
+  fontWeight: "900",
+  letterSpacing: 2,
+  color: "#000",
+},
+silWrap: {
+  ...StyleSheet.absoluteFillObject,
+  zIndex: 40,
+  opacity: 0.35,
+},
+silhouetteWrap: {
+  position: "absolute",
+  top: "5%",
+  left: "0%",
+  width: "100%",
+  height: "100%",
+  zIndex: 40,
+},
+
+silhouette: {
+  width: "100%",
+  height: "100%",
+  resizeMode: "cover",
+  opacity: 0.35,
+},
+promptWrap: {
+  position: "absolute",
+  left: 18,
+  right: 18,
+  zIndex: 95,
+},
+
+promptBox: {
+  height: PROMPT_H,                // fixed box height
+  borderRadius: 14,
+  backgroundColor: "rgba(0,0,0,0.75)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.35)",
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  justifyContent: "center",
+  overflow: "hidden",
+},
+
+promptText: {
+  color: "#fff",
+  fontWeight: "900",
+  letterSpacing: 0.2,
+},
+lightsOnWhiteText: {
   fontSize: 72,
   fontWeight: "900",
   letterSpacing: 2,

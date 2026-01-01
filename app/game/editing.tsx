@@ -1,3 +1,4 @@
+import { useGame } from "@/components/game/state";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
@@ -10,32 +11,46 @@ export default function EditingScreen() {
   const reel = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
 
-    useEffect(() => {
-    // Reel rotation
-    Animated.loop(
+  const { recordings, story } = useGame();
+  const ready = story.length > 0 && story.every((s) => !!recordings[s.id]);
+
+  // 1) Start animations once
+  useEffect(() => {
+    const reelLoop = Animated.loop(
       Animated.timing(reel, {
         toValue: 1,
         duration: 1400,
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
 
-    // Soft pulse on the text
-    Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
         Animated.timing(pulse, { toValue: 0, duration: 700, useNativeDriver: true }),
       ])
-    ).start();
+    );
 
-    // Auto-advance to Final
+    reelLoop.start();
+    pulseLoop.start();
+
+    return () => {
+      reelLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [reel, pulse]);
+
+  // 2) Navigate when clips are ready
+  useEffect(() => {
+    if (!ready) return;
+
     const t = setTimeout(() => {
       router.replace("/game/final" as any);
-    }, 1800);
+    }, 600);
 
     return () => clearTimeout(t);
-  }, []);
+  }, [ready, router]);
 
   const rotate = reel.interpolate({
     inputRange: [0, 1],
@@ -47,7 +62,7 @@ export default function EditingScreen() {
     outputRange: [0.65, 1],
   });
 
-    const waiting = false; // later: from query param or state
+  const waiting = !ready;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
@@ -62,9 +77,8 @@ export default function EditingScreen() {
         </Animated.View>
 
         <Animated.Text style={[styles.subtitle, { opacity: textOpacity }]}>
-            {waiting ? "Waiting on cast members…" : "Editing your scene…"}
+          {waiting ? "Waiting on cast members…" : "Editing your scene…"}
         </Animated.Text>
-
 
         <Text style={styles.note}>Get ready for the premiere.</Text>
       </View>

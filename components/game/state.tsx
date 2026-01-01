@@ -33,6 +33,12 @@ export type GameState = {
 
   cleanupRun: () => Promise<void>;
   saveLastRunBackup: () => Promise<void>;
+
+    // Global transition bridge (covers nav + camera mount flashes)
+  bridgeVisible: boolean;
+  bridgeColor: string;
+  showBridge: (color?: string) => void;
+  hideBridge: () => void;
 };
 
 const Ctx = createContext<GameState | null>(null);
@@ -198,6 +204,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
+   const [bridgeVisible, setBridgeVisible] = useState(false);
+   const [bridgeColor, setBridgeColor] = useState("#fff"); // default white
+
+const showBridge = (color = "#fff") => {
+  setBridgeColor(color);
+  setBridgeVisible(true);
+};
+
+const hideBridge = () => {
+  setBridgeVisible(false);
+};
+
   const next = () => {
     setIndex((i) => {
       const max = order.length;
@@ -225,6 +243,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     next,
     cleanupRun,
     saveLastRunBackup,
+    bridgeVisible,
+    bridgeColor,
+    showBridge,
+    hideBridge,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -234,4 +256,5 @@ export function useGame() {
   const v = useContext(Ctx);
   if (!v) throw new Error("useGame must be used inside GameProvider");
   return v;
+
 }

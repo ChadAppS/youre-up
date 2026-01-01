@@ -1,13 +1,8 @@
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-
-import { useEventListener } from "expo";
-import { useVideoPlayer, VideoView } from "expo-video";
-
 import { useGame } from "@/components/game/state";
-import * as NavigationBar from "expo-navigation-bar";
-import { Platform } from "react-native";
+import { useRouter } from "expo-router";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function FinalScreen() {
   const router = useRouter();
@@ -21,72 +16,74 @@ export default function FinalScreen() {
 
   const [i, setI] = useState(0);
   const [done, setDone] = useState(false);
-
-  const uri = uris[i] ?? null;
   const backedUpRef = useRef(false);
 
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-
-    let active = true;
-
-    (async () => {
-      try {
-        // Hide the 3-button bar; allow swipe to reveal temporarily
-        await NavigationBar.setBehaviorAsync("overlay-swipe");
-        await NavigationBar.setVisibilityAsync("hidden");
-      } catch {}
-    })();
-
-    return () => {
-      active = false;
-      // Restore when leaving Final
-      NavigationBar.setVisibilityAsync("visible").catch(() => {});
-      NavigationBar.setBehaviorAsync("inset-swipe").catch(() => {});
-    };
-  }, []);
-
-  useEffect(() => {
-    if (uris.length === 0) router.replace("/game");
-  }, [uris.length, router]);
-
-  const player = useVideoPlayer(uri, (p) => {
+  // ✅ Create ONE player for the lifetime of this screen
+  const player = useVideoPlayer("", (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 0.25;
-    p.play();
   });
 
+  // ✅ When i changes, swap the source
   useEffect(() => {
-    if (!uri) return;
+    const nextUri = uris[i];
+    if (!nextUri) return;
+
     setDone(false);
-    player.replace(uri);
-    player.currentTime = 0;
-    player.play();
-  }, [i]);
+
+    try {
+      player.replace(nextUri);
+      player.currentTime = 0;
+      player.play();
+    } catch {}
+  }, [i, uris, player]);
+
+  // ✅ Pause on unmount (prevents weird “released” timing issues on Android)
+  useEffect(() => {
+    return () => {
+      try { player.pause(); } catch {}
+    };
+  }, [player]);
 
   useEffect(() => {
-  if (backedUpRef.current) return;
-  if (uris.length === 0) return;
+    if (backedUpRef.current) return;
+    if (uris.length === 0) return;
 
-  backedUpRef.current = true;
-  saveLastRunBackup();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [uris.length]);
+    backedUpRef.current = true;
+    saveLastRunBackup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uris.length]);
 
-  useEventListener(player, "timeUpdate", ({ currentTime }) => {
-    const duration = (player as any).duration as number | undefined;
-    if (!duration) return;
+  // ✅ End detection (keep your interval, but don’t depend on uri/safeUri)
+  useEffect(() => {
+    if (uris.length === 0) return;
 
-    if (currentTime >= duration - 0.05) {
-      if (i < uris.length - 1) setI((x) => x + 1);
-      else {
-        setDone(true);
-        player.pause();
+    const t = setInterval(() => {
+      const duration = (player as any).duration as number | undefined;
+      const currentTime = (player as any).currentTime as number | undefined;
+
+      if (!duration || currentTime == null) return;
+
+      if (currentTime >= duration - 0.05) {
+        if (i < uris.length - 1) setI((x) => x + 1);
+        else {
+          setDone(true);
+          try { player.pause(); } catch {}
+        }
       }
-    }
-  });
+    }, 200);
 
-   if (!uri) return null;
+    return () => clearInterval(t);
+  }, [i, uris.length, player]);
+
+  // ✅ If no clips, show placeholder and DON’T render VideoView
+  if (uris.length === 0) {
+    return (
+      <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
+        <Text style={{ color: "#fff", fontWeight: "900" }}>PREPARING PREMIERE…</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -94,7 +91,7 @@ export default function FinalScreen() {
         style={StyleSheet.absoluteFill}
         player={player}
         contentFit="cover"
-        surfaceType="textureView"
+        surfaceType={Platform.OS === "android" ? "textureView" : undefined}
         nativeControls={false}
       />
 
@@ -132,7 +129,6 @@ export default function FinalScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-
   footer: {
     position: "absolute",
     left: 0,
@@ -145,15 +141,13 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   footerText: { color: "#fff", fontWeight: "900" },
-
   leaveBtn: {
-  backgroundColor: "rgba(255,255,255,0.15)",
-  paddingHorizontal: 16,
-  paddingVertical: 10,
-  borderRadius: 12,
-},
-leaveText: { color: "#fff", fontWeight: "900" },
-
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  leaveText: { color: "#fff", fontWeight: "900" },
   doneBtn: {
     backgroundColor: "#fff",
     paddingHorizontal: 16,

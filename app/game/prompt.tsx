@@ -68,11 +68,11 @@ scriptTextBlock: {
   scriptText: { position: "absolute", color: "#f2d27a", fontWeight: "900", textAlign: "center" },
   pageText: { position: "absolute", color: "rgba(255,255,255,0.65)", fontWeight: "900", textAlign: "center" },
 
-  sceneVal: { left: "28%", top: "24.2%", fontSize: 30 },
-  takeVal: { right: "17%", top: "24.2%", fontSize: 30 },
+  sceneVal: { left: "26%", top: "24.2%", fontSize: 30 },
+  takeVal: { right: "16%", top: "24.2%", fontSize: 30 },
   charVal: { left: "34%", top: "30.3%", width: "42%", fontSize: 28 },
   typeVal: { left: "42%", top: "35.7%", width: "42%", fontSize: 28 },
-  lenVal: { left: "44%", top: "41.2%", width: "42%", fontSize: 28 },
+  lenVal: { left: "44%", top: "41.3%", width: "42%", fontSize: 26 },
   dirVal: { fontSize: 26 },
   scriptVal: { position: "absolute",
     top: "58%",
@@ -184,60 +184,35 @@ arrowGlyphInline: {
   marginRight: 10,
 },
 arrowGlyph: {
-  fontSize: 28,
+  marginRight: 8,
+  fontSize: 26,
+  lineHeight: 26,
   fontWeight: "900",
   color: "#151664ff",
   includeFontPadding: false,
+  textAlign: "center",
   textShadowColor: "#0a1630",
   textShadowOffset: { width: 1, height: 1 },
   textShadowRadius: 1,
-  transform: [
-    { translateY: -7, },
-    { translateX: 11,}
-  ],
-  
 },
+
 dirRow: {
   position: "absolute",
   left: "37.1%",
   top: "47.4%",
-  width: "54%",
-  height: 32,                 // give it a stable line box
-  flexDirection: "row",
-  alignItems: "center",
+  // ✅ no fixed width; it will shrink-wrap the pill
 },
-dirTextBox: {
-  width: "82%",          // fixed text column
-  height: "100%",
-  justifyContent: "center",
-},
+
 dirText: {
   width: "100%",
   textAlign: "center",
   fontSize: 26,              // or keep using your dirVal fontSize
   includeFontPadding: false,
 },
-dirArrowBox: {
-  width: "15%",              // reserved space so text never overlaps arrow
-  height: "100%",
-  justifyContent: "center",
+dirPill: {
+  flexDirection: "row",
   alignItems: "center",
-},
-
-arrowAbs: {
-  position: "absolute",
-  left: 10,                  // how far from pill left edge
-  top: "50%",
-  transform: [{ translateY: -19 }], // baseline-normalize (tune once)
-},
-arrowGlyphAbs: {
-  fontSize: 28,
-  fontWeight: "900",
-  color: "#151664ff",
-  includeFontPadding: false,
-  textShadowColor: "#0a1630",
-  textShadowOffset: { width: 1, height: 1 },
-  textShadowRadius: 1,
+  alignSelf: "flex-start", // shrink-wrap content
 },
 });
 
@@ -272,6 +247,7 @@ function AutoFitOutlinedText({
   maxFontSize = 38,
   minFontSize = 12,
   maxLines = 3,
+  maxHeight,
   outlineColor = "#0a1630",
   outlineWidth = 2,
   style,
@@ -281,6 +257,7 @@ function AutoFitOutlinedText({
   maxFontSize?: number;
   minFontSize?: number;
   maxLines?: number;
+  maxHeight?: number;
   outlineColor?: string;
   outlineWidth?: number;
   style?: any;
@@ -294,7 +271,7 @@ function AutoFitOutlinedText({
     readyRef.current = false;
   }, [text, maxFontSize]);
 
-  const lineHeight = Math.round(fontSize * 1.10);
+  const lineHeight = Math.round(fontSize * 1.0);
   const baseStyle = useMemo(
     () => [
       style,
@@ -318,14 +295,23 @@ function AutoFitOutlinedText({
     const lines = e?.nativeEvent?.lines ?? [];
     const tooManyLines = lines.length > maxLines;
 
-    // Detect ellipsis on iOS/Android (usually ends with …)
-    const last = lines[maxLines - 1]?.text ?? "";
-    const hasEllipsis = last.endsWith("…") || last.endsWith("...");
+// Detect ellipsis on iOS/Android (usually ends with …)
+const last = lines[maxLines - 1]?.text ?? "";
+const hasEllipsis = last.endsWith("…") || last.endsWith("...");
 
-    if ((tooManyLines || hasEllipsis) && fontSize > minFontSize) {
-      setFontSize((s) => Math.max(minFontSize, s - 1));
-    return;
-    }
+// ✅ NEW: vertical fit check (box height)
+const neededHeight = lines.length * lineHeight;
+const availableHeight = typeof maxHeight === "number"
+  ? (maxHeight - outlineWidth * 2) // small safety margin
+  : undefined;
+
+const tooTall = availableHeight != null && neededHeight > availableHeight;
+
+if ((tooManyLines || hasEllipsis || tooTall) && fontSize > minFontSize) {
+  setFontSize((s) => Math.max(minFontSize, s - 1));
+  return;
+}
+
 
     // ✅ stable now
     if (!readyRef.current) {
@@ -350,33 +336,6 @@ function AutoFitOutlinedText({
   );
 }
 
-const arrowGlyphFromDir = (dir: LookDir) =>
-  dir === "LEFT" ? "←" :
-  dir === "RIGHT" ? "→" :
-  dir === "DOWN_LEFT" ? "↙" :
-  dir === "DOWN_RIGHT" ? "↘" :
-  dir === "UP_LEFT" ? "↖" :
-  dir === "UP_RIGHT" ? "↗" :
-  dir === "DOWN" ? "↓" :
-  "↑";
-
-  const arrowNudgeStyle = (dir: LookDir) => {
-  // Default nudge
-  let x = 0;
-  let y = -1;
-
-  if (dir === "LEFT") { x = 1; y = -2; }
-  if (dir === "RIGHT") { x = 0; y = -1; }
-  if (dir === "UP") { x = 2; y = -2; }
-  if (dir === "DOWN") { x = 2; y = -1; }
-  if (dir === "UP_LEFT") { x = 1; y = -2; }
-  if (dir === "UP_RIGHT") { x = 0; y = -2; }
-  if (dir === "DOWN_LEFT") { x = 1; y = -1; }
-  if (dir === "DOWN_RIGHT") { x = 0; y = -1; }
-
-  return { transform: [{ translateX: x }, { translateY: y }] };
-};
-
   const directionLabelFromArrow = (dir?: LookDir) => {
   switch (dir) {
     case "LEFT":
@@ -400,13 +359,36 @@ const arrowGlyphFromDir = (dir: LookDir) =>
       return "CAMERA";
   }
 };
+const arrowGlyphFromDir = (dir?: LookDir) => {
+  switch (dir) {
+    case "LEFT":
+      return "←";
+    case "RIGHT":
+      return "→";
+    case "UP":
+      return "↑";
+    case "DOWN":
+      return "↓";
+    case "DOWN_LEFT":
+      return "↙";
+    case "DOWN_RIGHT":
+      return "↘";
+    case "UP_RIGHT":
+      return "↗";
+    case "UP_LEFT":
+      return "↖";
+    case "CAMERA":
+    default:
+      return "•"; // or "◎" if you want
+  }
+};
 
 
 
 export default function PromptScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { order, index, resetRunOnly, showBridge } = useGame();
+  const { order, index, resetRunOnly, displaySceneNumber, bumpSceneNumber } = useGame();
   const [showExit, setShowExit] = useState(false);
   const [navigating, setNavigating] = useState(false);
 
@@ -427,6 +409,7 @@ const [transitioning, setTransitioning] = useState(false);
 
 const [playLightup, setPlayLightup] = useState(false);
 const lightupRef = useRef<LottieView>(null);
+const [scriptBoxHeight, setScriptBoxHeight] = useState<number>(0);
 
 const mountedRef = useRef(true);
 const whiteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -441,6 +424,10 @@ useEffect(() => {
     slideX.stopAnimation();
   };
 }, []);
+
+useEffect(() => {
+  bumpSceneNumber();
+}, [index]);
 
 useEffect(() => {
   mountedRef.current = true;
@@ -465,10 +452,6 @@ useEffect(() => {
     useNativeDriver: true,
   }).start();
 }, [pageReady, pageOpacity]);
-
-useEffect(() => {
-  showBridge("#fff");
-}, [showBridge]);
 
 useEffect(() => {
   setPageReady(false);
@@ -512,8 +495,8 @@ const ctaScale = pulse.interpolate({
   outputRange: [1, 1.05],
 });
 
-const dirArrow = (slot.directionArrow ?? "CAMERA") as LookDir;
-const dirText = slot.directionText ?? directionLabelFromArrow(dirArrow);
+const dirArrow = (slot.lookDirection ?? "CAMERA") as LookDir;
+const dirText = directionLabelFromArrow(dirArrow);
 
 const safeIndex = Math.min(index, Math.max(0, (order?.length ?? 0) - 1));
 
@@ -619,47 +602,43 @@ const goToRecord = () => {
 
 
           {/* Scene / Take values */}
-          <Text style={[styles.blueValue, styles.sceneVal]}>{(slot as any).sceneNumber ?? "—"}</Text>
-          <Text style={[styles.blueValue, styles.takeVal]}>{safeIndex + 1}</Text>
+          <Text style={[styles.blueValue, styles.sceneVal]}>{displaySceneNumber}</Text>
+          <Text style={[styles.blueValue, styles.takeVal]}>{1}</Text>
 
           {/* Pills */}
           <Text style={[styles.bluePillText, styles.charVal]}>{(slot as any).character ?? "You"}</Text>
           <Text style={[styles.bluePillText, styles.typeVal]}>{slot.type.replace("_", " ")}</Text>
-          <Text style={[styles.bluePillText, styles.lenVal]}>{`${slot.maxSeconds} SECONDS`}</Text>
-<View style={styles.dirRow}>
-  <View style={styles.dirArrowBox}>
-    {dirArrow !== "CAMERA" ? (
-      <Text style={styles.arrowGlyph}>{arrowGlyphFromDir(dirArrow)}</Text>
-    ) : null}
-  </View>
+          <Text style={[styles.bluePillText, styles.lenVal]}>{`${slot.shotLengthSeconds} SECONDS`}</Text>
 
-  <View style={styles.dirTextBox}>
-    <Text
-      numberOfLines={1}
-      allowFontScaling={false}
-      ellipsizeMode="clip"
-      style={[styles.bluePillText, styles.dirText]}
-    >
-      {dirText}
-    </Text>
+<View style={styles.dirRow}>
+  <View style={styles.dirPill}>
+    <Text style={styles.arrowGlyph}>{arrowGlyphFromDir(dirArrow)}</Text>
+    <Text style={styles.dirText}>{dirText}</Text>
   </View>
 </View>
 
+
+
           {/* Script */}
-          <View style={[styles.scriptVal, styles.scriptBoxHit]}>
-            <View style={styles.scriptInnerPad}>
-              <AutoFitOutlinedText
-                text={slot.prompt}
-                maxFontSize={38}
-                minFontSize={12}
-                maxLines={3}
-                outlineColor="#0a1630"
-                outlineWidth={2}
-                style={styles.scriptYellow}
-                onReady={() => setPageReady(true)}
-              />
-            </View>
-          </View>
+          <View
+  style={[styles.scriptVal, styles.scriptBoxHit]}
+  onLayout={(e) => setScriptBoxHeight(e.nativeEvent.layout.height)}
+>
+  <View style={styles.scriptInnerPad}>
+    <AutoFitOutlinedText
+      text={slot.prompt}
+      maxFontSize={38}
+      minFontSize={12}
+      maxLines={3}
+      maxHeight={scriptBoxHeight}   // ✅ ADD THIS LINE
+      outlineColor="#0a1630"
+      outlineWidth={2}
+      style={styles.scriptYellow}
+      onReady={() => setPageReady(true)}
+    />
+  </View>
+</View>
+
 
           {/* Page */}
           <Text style={[styles.pageBlue, styles.pageVal]}>{`PAGE ${safeIndex + 1}/${order.length}`}</Text>

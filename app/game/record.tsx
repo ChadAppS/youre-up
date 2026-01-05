@@ -112,7 +112,7 @@ export default function RecordScreen() {
 
   // HUD / timer
   const [remainingMs, setRemainingMs] = useState(0);
-  const durationMs = useMemo(() => (slot?.maxSeconds ?? 3) * 1000, [slot?.maxSeconds]);
+  const durationMs = useMemo(() => (slot?.shotLengthSeconds ?? 3) * 1000, [slot?.shotLengthSeconds]);
 
   const recordStartAtRef = useRef<number>(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -135,8 +135,8 @@ return `${pad2(minutes)}:${pad2(seconds)}:${pad2(frames)}`;
 };
 
 const SAFE_TOP = 70;       // must match styles.safeFrame.top
-const HEADROOM_Y = 110;    // must match styles.headroomLine.top
-const TIME_BOX_H = 34;     // approx height of the timecode pill/text
+const HEADROOM_Y = 130;    // must match styles.headroomLine.top
+const TIME_BOX_H = 45;     // approx height of the timecode pill/text
 const TIME_NUDGE = 0;
 
 const actionScale = useRef(new Animated.Value(0.92)).current;
@@ -380,6 +380,7 @@ schedule(0, () => {
     Animated.timing(entryWhite, {
       toValue: 0,
       duration: 850,
+      delay: 100,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
@@ -675,14 +676,15 @@ schedule(5600, () => {
       },
     ]}
   >
-    <Text
-      style={[
-        styles.timecodeText,
-        remainingMs <= 1000 && styles.timecodeTextWarn,
-      ]}
-    >
-      {msToMSF(remainingMs, fakeFPS)}
-    </Text>
+   <Text
+  style={[
+    styles.timecodeText,
+    remainingMs <= 2000 && remainingMs > 1000 && styles.timecodeTextCaution, // yellow 2s→1s
+    remainingMs <= 1000 && styles.timecodeTextWarn, // red 1s→0s
+  ]}
+>
+  {msToMSF(remainingMs, fakeFPS)}
+</Text>
   </View>
 )}
 
@@ -731,7 +733,7 @@ schedule(5600, () => {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: "#fff" },
   camera: { ...StyleSheet.absoluteFillObject },
 
   scrim: {
@@ -850,7 +852,7 @@ actionTextLights: {
 
   timecodeText: {
     color: "#fff",
-    fontSize: 28,
+    fontSize: 38,
     fontWeight: "900",
     letterSpacing: 0.8,
     textShadowColor: "rgba(0,0,0,0.75)",  // adds perceived boldness
@@ -858,6 +860,9 @@ actionTextLights: {
     textShadowRadius: 2,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }),
   },
+  timecodeTextCaution: {
+  color: "#ffd60a", // yellow
+},
   timecodeTextWarn: {
   color: "#ff3b30",
 },
@@ -875,7 +880,7 @@ actionTextLights: {
     position: "absolute",
     left: 12,
     right: 12,
-    top: 110,
+    top: 130,
     height: 2,
     backgroundColor: "rgba(255,255,255,0.75)",
   },

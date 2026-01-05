@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const bg = require("../assets/images/splashscreens/YULogo_SplashScreen.png");
+const bg = require("../assets/images/splashscreens/SplashScreen.png");
 
 export default function Splash() {
   const router = useRouter();
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
     alignItems: "center",
-    paddingBottom: 180, // 👈 lower/raise the tap prompt here
+    paddingBottom: 150, // 👈 lower/raise the tap prompt here
   },
 
   tapWrap: {

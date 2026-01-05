@@ -10,7 +10,7 @@ export type SceneDef = {
 
 export const SCENES: SceneDef[] = [
   {
-    id: "scene_1",
+    id: SCENE_1.id,
     seasonId: "season_1",
     title: "Detective Mystery!",
     subtitle: "New version each time",

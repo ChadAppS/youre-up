@@ -12,7 +12,7 @@
       "supportsTablet": true
     },
     "splash": {
-      "image": "./assets/images/splashscreens/YULogo_SplashScreen.png",
+      "image": "./assets/images/splashscreens/SplashScreen.png",
       "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },

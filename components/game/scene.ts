@@ -4,18 +4,9 @@ export type Slot = {
   id: string;
   type: SlotType;
   prompt: string;
-  example?: string;
-  maxSeconds: number;
-
+  shotLengthSeconds: number;
   character?: string; // "Customer"
-  sceneNumber?: string; // "12B" (or derive from scene)
-  directionArrow?: LookDir;
-
-   // Optional prompt-screen metadata (no impact on record screen)
-  duration?: string;        // e.g. "2 seconds"
-  mood?: string;            // e.g. "serious"
-  tone?: string;            // e.g. "dry"
-  direction?: string;       // e.g. "Lean in closer."
+  lookDirection?: LookDir;
 };
 
 export type Variant = {
@@ -47,37 +38,26 @@ export const SCENE_1: Scene = {
       id: "v1",
       title: "Variant 1",
       slots: [
-        { id: "dm_v1_1", 
-          character: "Customer",
-          type: "LINE", 
-          maxSeconds: 3,
-          prompt: "Say: “Where were you last night?”", 
-          sceneNumber: "2",
-          directionArrow: "LEFT"
-        },
-        { id: "dm_v1_2", 
-          character: "Myself",
-          type: "REACTION", 
-          prompt: "React: shocked", 
-          maxSeconds: 2,
-          duration: "2 seconds",
-          mood: "surprised",
-          tone: "silent",
-          sceneNumber: "2A",
-          direction: "Let it register before reacting.", 
-          directionArrow: "UP"
-        },
-        { id: "dm_v1_3",
-          sceneNumber: "2B",
-          character: "Ugly Man", 
+        { id: "santa_v1_1", 
+          character: "Cashier",
           type: "ONE_WORD", 
-          prompt: "Say one word: “Lies.”", 
-          maxSeconds: 2,
-          duration: "2 seconds",
-          mood: "accusing",
-          tone: "quiet",
-          direction: "Lower your voice.",
-          directionArrow: "DOWN_RIGHT"
+          shotLengthSeconds: 1.7,
+          prompt: "One Word: (A gift you would get your lover)", 
+          lookDirection: "LEFT"
+        },
+        { id: "santa_v1_2", 
+          character: "Cashier",
+          type: "REACTION", 
+          prompt: "React: Shocked", 
+          shotLengthSeconds: 1.2,
+          lookDirection: "UP"
+        },
+        { id: "santa_v1_3",
+          character: "Cashier", 
+          type: "ONE_WORD", 
+          prompt: "Say: (A number)", 
+          shotLengthSeconds: 1.7,
+          lookDirection: "DOWN_RIGHT"
         },
       ],
     },
@@ -85,24 +65,31 @@ export const SCENE_1: Scene = {
       id: "v2",
       title: "Variant 2",
       slots: [
-        { id: "dm_v2_1", 
+        { id: "date_v2_1", 
           type: "LINE", 
-          prompt: "Say SaySay: “You’re sweating. That’s interesting.” And then cry your little heart out fool", 
-          maxSeconds: 3,
-          directionArrow: "CAMERA",
+          prompt: "Say: “I live with my mom in __(Location)__", 
+          shotLengthSeconds: 3,
+          lookDirection: "CAMERA",
         },
 
-        { id: "dm_v2_2", 
+        { id: "date_v2_2", 
           type: "REACTION", 
-          prompt: "React: suspicious man", 
-          maxSeconds: 2,
-          directionArrow: "RIGHT" },
+          prompt: "React: Sexy Wink", 
+          shotLengthSeconds: 1.3,
+          lookDirection: "RIGHT" },
 
-        { id: "dm_v2_3", 
+        { id: "date_v2_3", 
           type: "IMPROV", 
-          prompt: "Improv: defend yourself in 2 seconds or the man will punch your face open bro! I'm", 
-          maxSeconds: 2,
-          directionArrow: "UP_LEFT" },
+          prompt: "Improv about where you would live if you wanted to make sure no one ever find you", 
+          shotLengthSeconds: 5,
+          lookDirection: "UP_LEFT" },
+
+          { id: "date_v2_4", 
+          type: "IMPROV", 
+          prompt: "Perform a dance", 
+          shotLengthSeconds: 4,
+          lookDirection: "CAMERA",
+        },
       ],
     },
   ],

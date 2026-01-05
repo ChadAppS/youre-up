@@ -1,19 +1,28 @@
 // components/game/state.tsx
 import { SCENES } from "@/components/game/scenes";
 import { shuffle } from "@/components/game/utils";
+import { buildTimeline } from "@/constants/timelines";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 type SceneAny = any;
-type SlotAny = { id: string; maxSeconds?: number } & Record<string, any>;
+type SlotAny = { id: string; shotLengthSeconds?: number } & Record<string, any>;
 type VariantAny = { id: string; slots: SlotAny[] };
 
+export type TimelineItem =
+  | { type: "creator"; uri: string }
+  | { type: "slot"; slotId: string };
+
 export type GameState = {
-  sceneId: string;
+  sceneId: string | null;
   seasonId: string;
   runId: string;
+  timeline: TimelineItem[];
+  setTimeline: (t: TimelineItem[]) => void;
+  displaySceneNumber: string;
+  bumpSceneNumber: () => void;
 
   scene: SceneAny;
   variant: VariantAny;
@@ -86,23 +95,32 @@ function extFromUri(uri: string) {
   return last;
 }
 
+function makeFakeSceneNumber() {
+  const num = Math.floor(Math.random() * 84) + 7; // 7–90
+  const letters = "ABCDEFGHJKM"; // avoids I/O and after M
+  const letter = letters[Math.floor(Math.random() * letters.length)];
+  return `${num}${letter}`; // e.g. "12B"
+}
+
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const makeRunId = () => Crypto.randomUUID();
 
   const [seasonId, setSeasonId] = useState("season_1");
-  const [sceneId, _setSceneId] = useState(SCENES[0]?.id ?? "scene_1");
+  const [sceneId, _setSceneId] = useState(SCENES[0]?.id ?? "detective_mystery");
   const [variantIndex, setVariantIndex] = useState(0);
 
   const [runId, setRunId] = useState(() => makeRunId());
   const [seed, setSeed] = useState(0);
   const [index, setIndex] = useState(0);
   const [recordings, setRecordings] = useState<Record<string, string>>({});
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [displaySceneNumber, setDisplaySceneNumber] = useState(() => makeFakeSceneNumber());
+  const bumpSceneNumber = () => setDisplaySceneNumber(makeFakeSceneNumber());
 
   const scene = useMemo(() => SCENES.find((s) => s.id === sceneId)?.scene ?? SCENES[0]?.scene, [sceneId]);
   const variants = useMemo(() => normalizeVariants(scene), [scene]);
   const variant = useMemo<VariantAny>(() => variants[variantIndex] ?? variants[0] ?? { id: "v1", slots: [] }, [variants, variantIndex]);
   const story = useMemo(() => variant?.slots ?? [], [variant]);
-
   const order = useMemo(() => shuffle(variant?.slots ?? []), [variant, seed]);
 
   const DOC_DIR = FileSystem.documentDirectory; // string | null
@@ -113,20 +131,34 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const lastRunDir = DOC_DIR ? `${DOC_DIR}last_run/` : TEMP_ROOT ? `${TEMP_ROOT}last_run/` : null;
 
   const startNewRunForScene = async (nextSceneId?: string) => {
-    const sid = nextSceneId ?? sceneId;
+  const sid = nextSceneId ?? sceneId;
 
-    const newRunId = makeRunId();
-    setRunId(newRunId);
+  const newRunId = makeRunId();
+  setRunId(newRunId);
+  setDisplaySceneNumber(makeFakeSceneNumber());
 
-    const nextScene = SCENES.find((s) => s.id === sid)?.scene ?? SCENES[0]?.scene;
-    const nextVariants = normalizeVariants(nextScene);
-    const picked = await pickNextVariantIndex(sid, nextVariants.length);
-    setVariantIndex(picked);
+  const nextScene =
+    SCENES.find((s) => s.id === sid)?.scene ?? SCENES[0]?.scene;
 
-    setSeed((s) => s + 1);
-    setIndex(0);
-    setRecordings({});
-  };
+  const nextVariants = normalizeVariants(nextScene);
+  const picked = await pickNextVariantIndex(sid, nextVariants.length);
+  setVariantIndex(picked);
+
+  const variant = nextVariants[picked] ?? nextVariants[0];
+
+  // ✅ timeline drives final playback (creator + slot placeholders)
+  //setTimeline(buildTimeline(sid, variant.id));
+
+  setSeed((s) => s + 1);
+  setIndex(0);
+  setRecordings({});
+};
+
+useEffect(() => {
+  // Keep timeline always synced to the currently active scene + variant
+  if (!sceneId || !variant?.id) return;
+  setTimeline(buildTimeline(sceneId, variant.id));
+}, [sceneId, variant?.id]);
 
   const cleanupRun = async () => {
     if (!tempRunDir) return;
@@ -155,13 +187,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const resetAll = async () => {
     await cleanupRun();
-    _setSceneId(SCENES[0]?.id ?? "scene_1");
+    _setSceneId(SCENES[0]?.id ?? "detective_mystery");
     setVariantIndex(0);
     setSeasonId("season_1");
     setRunId(makeRunId());
     setSeed((s) => s + 1);
     setIndex(0);
     setRecordings({});
+    setDisplaySceneNumber(makeFakeSceneNumber());
   };
 
   const saveRecording = async (slotId: string, uri: string) => {
@@ -199,7 +232,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         await FileSystem.copyAsync({ from, to });
       }
 
-      const manifest = { savedAt: Date.now(), sceneId, runId, variantId: variant?.id ?? "v1", slots: keys };
+      const manifest = { savedAt: Date.now(), sceneId, variantId: variant?.id ?? "v1", runId, slots: keys };
       await FileSystem.writeAsStringAsync(`${lastRunDir}manifest.json`, JSON.stringify(manifest, null, 2));
     } catch {}
   };
@@ -247,6 +280,10 @@ const hideBridge = () => {
     bridgeColor,
     showBridge,
     hideBridge,
+    timeline,
+    setTimeline,
+    displaySceneNumber,
+    bumpSceneNumber,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
